@@ -25,11 +25,13 @@ ex1 = [
   , modExpList  = Just [EntExp (Ent (mkUnqual (Name "f")) Nothing)]
   , modImports  =
     [ Import
-      { impSource     = ModName "A"
-      , impQualified  = False
-      , impAs         = ModName "A"
-      , impHiding     = True
-      , impList       = []
+      { impQualified  = False
+      , impSet        = ImportSet
+                        { imsSource     = ModName "A"
+                        , imsAs         = ModName "A"
+                        , imsHiding     = True
+                        , imsList       = []
+                        }
       }
     ]
   , modDefines  = mempty
@@ -40,11 +42,13 @@ ex1 = [
   , modExpList  = Just [EntExp (Ent (mkUnqual (Name "f")) Nothing)]
   , modImports  =
     [ Import
-      { impSource     = ModName "A"
-      , impQualified  = False
-      , impAs         = ModName "A"
-      , impHiding     = True
-      , impList       = []
+      { impQualified  = False
+      , impSet        = ImportSet
+                        { imsSource     = ModName "A"
+                        , imsAs         = ModName "A"
+                        , imsHiding     = True
+                        , imsList       = []
+                        }
       }
     ]
   , modDefines  = mempty
@@ -55,18 +59,22 @@ ex1 = [
   , modExpList  = Just [ModuleExp (ModName "B")]
   , modImports  =
     [ Import
-      { impSource     = ModName "B"
-      , impQualified  = True
-      , impAs         = ModName "B"
-      , impHiding     = True
-      , impList       = []
+      { impQualified  = True
+      , impSet        = ImportSet
+                        { imsSource     = ModName "B"
+                        , imsAs         = ModName "B"
+                        , imsHiding     = True
+                        , imsList       = []
+                        }
       }
       , Import
-      { impSource     = ModName "C"
-      , impQualified  = False
-      , impAs         = ModName "C"
-      , impHiding     = True
-      , impList       = []
+      { impQualified  = False
+      , impSet        = ImportSet
+                        { imsSource     = ModName "C"
+                        , imsAs         = ModName "C"
+                        , imsHiding     = True
+                        , imsList       = []
+                        }
       }
     ]
   , modDefines  = mempty
@@ -80,11 +88,13 @@ ex2 = [
   , modExpList  = Just [EntExp (Ent (mkUnqual (Name "f")) Nothing)]
   , modImports  =
     [ Import
-      { impSource     = ModName "B"
-      , impQualified  = False
-      , impAs         = ModName "B"
-      , impHiding     = True
-      , impList       = []
+      { impQualified  = False
+      , impSet        = ImportSet
+                        { imsSource     = ModName "B"
+                        , imsAs         = ModName "B"
+                        , imsHiding     = True
+                        , imsList       = []
+                        }
       }
     ]
   , modDefines  = mempty
@@ -95,11 +105,13 @@ ex2 = [
   , modExpList  = Just [ModuleExp (ModName "A")]
   , modImports  =
     [ Import
-      { impSource     = ModName "A"
-      , impQualified  = False
-      , impAs         = ModName "A"
-      , impHiding     = True
-      , impList       = []
+      { impQualified  = False
+      , impSet        = ImportSet
+                        { imsSource     = ModName "A"
+                        , imsAs         = ModName "A"
+                        , imsHiding     = True
+                        , imsList       = []
+                        }
       }
     ]
   , modDefines  = Defns $ mkSet [(Name "f", entF "B") ]
@@ -113,19 +125,23 @@ ex3 = [
   , modExpList  = Just [EntExp (Ent (mkQual (ModName "B") (Name "f")) Nothing)]
   , modImports  =
     [ Import
-      { impSource     = ModName "B"
-      , impQualified  = True
-      , impAs         = ModName "B"
-      , impHiding     = True
-      , impList       = []
+      { impQualified  = True
+      , impSet        = ImportSet
+                        { imsSource     = ModName "B"
+                        , imsAs         = ModName "B"
+                        , imsHiding     = True
+                        , imsList       = []
+                        }
       },
 
     Import
-      { impSource     = ModName "A"
-      , impQualified  = False
-      , impAs         = ModName "B"
-      , impHiding     = True
-      , impList       = []
+      { impQualified  = False
+      , impSet        = ImportSet
+                        { imsSource     = ModName "A"
+                        , imsAs         = ModName "B"
+                        , imsHiding     = True
+                        , imsList       = []
+                        }
       }
 
     ]

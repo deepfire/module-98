@@ -1,7 +1,13 @@
+> {-# LANGUAGE LambdaCase #-}
 > {-# LANGUAGE ScopedTypeVariables #-}
+> {-# LANGUAGE TupleSections #-}
+> {-# LANGUAGE ViewPatterns #-}
 > module Modules(computeInsOuts,inscope) where
 >
-> import Data.Maybe (isNothing)
+> import Data.Function (on)
+> import Data.List (concatMap)
+> import Data.Maybe (isNothing, fromJust)
+> import qualified Data.Set as Set (map)
 >
 > import Types.ModSysAST
 > import Types.Names
@@ -220,14 +226,18 @@ Now that we know how to handle a single entry in the export list,
 we are ready to compute the export relation of a module.   This
 is the task of the function #exports#.
 
-> exports :: Module -> Scope -> Exports
-> exports mod inscp =
+> exports :: Module -> (Origins, Scope) -> Exports
+> exports mod inscp = Exports $
 >   case modExpList mod of
->     Nothing -> Exports . unDefns $ modDefines mod
->     Just es -> Exports $ getQualified `mapDom` unionRels (unScope <$> exps)
->       where
->       exps :: [Scope]
->       exps = mExpListEntry inscp `map` es
+
+In case of an omitted export list, we only export locally-defined unqualified names.
+
+>     Nothing -> mkUnqual `mapDom` unDefns (modDefines mod)
+
+Here we reinterpret the module re-export entries to allow qualified names
+into the export list.
+
+>     Just es -> mconcat $ unScope <$> mExpListEntry inscp `map` es
 
 The parameter #inscp# models the in-scope relation of the module.
 It is necessary, as the interface of a module is essentially a subset
@@ -252,13 +262,37 @@ of #inscp# containing precisely those entities,
 which may be named with _both_ some simple name #x# _and_
 a qualified name #M.x#
 
-> mExpListEntry :: Scope -> ExpListEntry -> Scope
-> mExpListEntry (Scope inscp) (EntExp it) = Scope $ mEntSpec False inscp it
-> mExpListEntry (Scope inscp) (ModuleExp m) =
->   Scope $ (qual m `mapDom` unqs) `intersectRel` qs
+> mExpListEntry :: (Origins, Scope) -> ExpListEntry -> Scope
+> mExpListEntry (_, Scope scope) (EntExp it) = Scope $ mEntSpec False scope it
+> mExpListEntry (Origins origins, Scope inscp) (ModuleExp m) =
+
+Under StructuredImports proposal, we reinterpret the 'module *modid*'
+clause to also re-export qualified names implied by the origins relation.
+
+>   Scope $ unExports haskell98Exports <> unExports structuredExports
 >   where
+>    haskell98Exports, structuredExports :: Exports
+
+Under StructuredImports proposal, we have to tighten 'Exports' to only contain
+qualified names for what is intended to be exported qualified.
+
+>   --- XXX: do we weaken any validity tests by this tightening?
+>    haskell98Exports  = Exports . mapDom toUnqual
+>                      $ (qual m `mapDom` unqs) `intersectRel` qs
+>
 >    qu :: (Rel QName Entity, Rel QName Entity)
 >    qu@(qs, unqs) = partitionDom isQual inscp
+
+Merge all qualified scopes which were brought in by import of alias 'm',
+and consider this our export entry.
+
+>    structuredExports = Exports . unScope . mconcat . setToList . rng
+>                      $ restrictDom (== m) origins
+
+Export all names qualified with 'm'.
+
+> mExpListEntry (_, Scope inscp) (QualExp m) =
+>    Scope $ ((== Just m) . getQualifier) `restrictDom` inscp
 
 
 In-scope relations
@@ -267,19 +301,20 @@ In-scope relations
 In this section we specify how to compute the in-scope relation of a module.
 This is done by the function #inscope#:
 
-> inscope :: Module -> (ModName -> Exports) -> Scope
-> inscope m expsOf = imports <> locals
+> inscope :: Module -> (ModName -> Exports) -> (Origins, Scope)
+> inscope m expsOf = (,)
+>                    (mconcat origins)
+>                    (mconcat imported <> locals)
 >   where
+>   locals :: Scope
+>   locals = Scope $ mkQual (modName m) `mapDom` unDefns defEnts
+>                    <>        mkUnqual `mapDom` unDefns defEnts
+>
+>   (,) origins imported :: (,) [Origins] [Scope]
+>     = unzip $ map (mImp expsOf) (modImports m)
+>
 >   defEnts :: Defns
 >   defEnts = modDefines m
->   locals  :: Scope
->   locals  = Scope $ unionRels
->               [mkUnqual `mapDom` unDefns defEnts,
->                mkQual (modName m) `mapDom` unDefns defEnts]
->
->   imports :: Scope
->   imports =
->     Scope . unionRels $ map (unScope . mImp expsOf) (modImports m)
 
 An entity is in scope if it is either locally defined,
 or if it is imported from another module. It is therefore necessary to
@@ -309,28 +344,73 @@ The function #mImp# is used to compute what entities come in scope through
 a single import declaration.
 \newpage
 
-> mImp :: (ModName -> Exports) -> Import -> Scope
+> mImp :: (ModName -> Exports) -> Import -> (Origins, Scope)
 > mImp expsOf imp
->   | impQualified imp  = qs
->   | otherwise         = qs <> unqs
+>   | impQualified imp  = (,) origins  qs
+>   | otherwise         = (,) origins (qs <> unqs)
 >   where
 >   qs     :: Scope
->   qs      = Scope $ mkQual (impAs imp) `mapDom` incoming
+>   qs      = plainQuals <> selectedQuals
 >   unqs   :: Scope
->   unqs    = Scope $ mkUnqual `mapDom` incoming
+>   unqs    = selectedUnqs
+>   isHiding = imsHiding (impSet imp)
+
+For every qualified name, we record which alias brought it in.
+
+>   origins :: Origins
+>   origins = Origins $ mkSet [(impAs, selectedQuals)]
 >
->   listed :: Set (Name, Entity)
->   listed  = unionRels $
->               map (mEntSpec isHiding $ unExports exps)
->                   (impList imp)
->   incoming :: Set (Name, Entity)
->   incoming
->     | isHiding  = unExports exps `minusRel` listed
->     | otherwise = listed
+>   plainQuals :: Scope
+>   plainQuals = Scope $ qual impAs `mapDom` unScope selectedUnqs
 >
->   isHiding  = impHiding imp
->   exps     :: Exports
->   exps      = expsOf (impSource imp)
+>   impAs :: ModName
+>   impAs = imsAs (impSet imp)
+>
+>   selectedQuals, selectedUnqs :: Scope
+>   (Scope -> selectedQuals, Scope -> selectedUnqs)
+>     = partitionDom isQualified (unScope selected)
+>
+>   selected :: Scope
+>   selected
+>     | isHiding  = Scope $ unExports importable `minusRel` resolved
+>     | otherwise = Scope resolved
+>
+>   resolved :: Rel QName Entity
+>   resolved =
+>     mapDom mkUnqual resolved98
+>       <> resolvedStructured
+>
+>   resolved98 :: Rel Name Entity
+>   resolved98 = unionRels $
+>     map (mEntSpec isHiding $ mapDom toSimple importableUnQuals)
+>         listed98
+>
+>   resolvedStructured :: Rel QName Entity
+>   resolvedStructured = unionRels $
+>     map (mEntSpec isHiding importableQuals) $
+>         concatMap structuredImportSetSpecs listedStructured
+>
+>   structuredImportSetSpecs :: ImportSet -> [EntSpec QName]
+>   structuredImportSetSpecs ims =
+>     qualifyEntSpec (imsSource ims) <$> imsList ims
+>
+>   qualifyEntSpec :: ModName -> EntSpec Name -> EntSpec QName
+>   qualifyEntSpec m (Ent n x) = Ent (mkQual m n) x
+>
+>   (listed98, listedStructured) :: ([EntSpec Name], [ImportSet])
+>     = foldl (\(essAcc, imssAcc) -> \case
+>                e@Ent{}  -> (e:essAcc, imssAcc)
+>                Qual ims -> (essAcc, ims:imssAcc))
+>             ([],[])
+>             (imsList $ impSet imp)
+>
+>   importableQuals, importableUnQuals :: Rel QName Entity
+>   (,) importableQuals
+>       importableUnQuals =
+>     partitionDom isQualified (unExports importable)
+>
+>   importable :: Exports
+>   importable = expsOf . imsSource $ impSet imp
 
 First we define the relation #listed#, which contains exported entities
 matching _any_ of the entity specifications in the list of the import
@@ -380,7 +460,7 @@ strongly connected components.
 > computeInsOuts otherExps mods = inscps `zip` exps
 >   where
 >   inscps :: [Scope]
->   inscps = computeIs exps
+>   inscps = map snd $ computeIs exps
 >   exps   :: [Exports]
 >   exps   = map Exports $ lfpAfter (map unExports . nextExps . map Exports) $
 >             replicate (length mods) emptyRel
@@ -388,9 +468,9 @@ strongly connected components.
 >   nextExps :: [Exports] -> [Exports]
 >   nextExps = computeEs . computeIs
 >
->   computeEs :: [Scope] -> [Exports]
+>   computeEs :: [(Origins, Scope)] -> [Exports]
 >   computeEs is = zipWith exports mods is
->   computeIs :: [Exports] -> [Scope]
+>   computeIs :: [Exports] -> [(Origins, Scope)]
 >   computeIs es = map (`inscope` toFun es) mods
 >
 >   toFun :: [Exports] -> (ModName -> Exports)

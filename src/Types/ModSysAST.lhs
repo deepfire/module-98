@@ -18,8 +18,14 @@ We use the following data structure to represent modules:
 >   modImports  :: [Import],
 >   modDefines  :: Defns }
 
+We also want to distinguish between import and export relationships,
+since they have an uncomfortably similar structure.
 
-> newtype Exports  = Exports { unExports :: Rel Name Entity }
+> newtype Exports  = Exports { unExports :: Rel QName Entity }
+
+Which imports bring in which qualified names.
+
+> newtype Origins  = Origins { unOrigins :: Rel ModName Scope }
 
 Set of bindings in scope.
 
@@ -30,6 +36,8 @@ Set of bindings in scope.
 > instance Semigroup Exports where (Exports l) <> (Exports r) = Exports (l <> r)
 > instance Monoid    Exports where mempty = Exports mempty
 >
+> instance Semigroup Origins where (Origins l) <> (Origins r) = Origins (l <> r)
+> instance Monoid    Origins where mempty = Origins mempty
 >
 > instance Semigroup Scope   where (Scope   l) <> (Scope   r) = Scope   (l <> r)
 > instance Monoid    Scope   where mempty = Scope   mempty
@@ -54,19 +62,22 @@ are to be exported.
 
 > data ExpListEntry = EntExp (EntSpec QName)
 >                   | ModuleExp ModName
+>                   | QualExp ModName
 > data EntSpec j    = Ent j (Maybe SubSpec)
+>                   | Qual ImportSet
 > data SubSpec      = AllSubs | Subs [Name]
 
 \begin{ex}
 For the Haskell module:
 
-|  module A (f,C(..),module M) where ...
+|  module A (f,C(..),module M,module N qualified) where ...
 
 the field #modExpList# would be:
 
 | Just [EntExp (Ent "f" Nothing),
 |       EntExp (Ent "C" (Just AllSubs)),
-|       ModuleExp "M"]
+|       ModuleExp "M" False,
+|       ModuleExp "N" True]
 \end{ex}
 
 The structure #EntSpec# is used in both import and export lists.
@@ -92,14 +103,17 @@ to supply _import declarations_.  Their purpose it to specify
 what entities are to be imported, which module provides the required
 entities, and valid ways to refer to the imported entities.
 
+> data ImportSet = ImportSet {
+>   imsSource     :: ModName,
+>   imsAs         :: ModName,
+>   imsHiding     :: Bool,
+>   imsList       :: [EntSpec Name] }
+>
 > data Import = Import {
 >   impQualified  :: Bool,
->   impSource     :: ModName,
->   impAs         :: ModName,
->   impHiding     :: Bool,
->   impList       :: [EntSpec Name] }
+>   impSet        :: ImportSet }
 
-The #impSource# field is the only field that must be specified explicitly
+The #imsSource# field is the only field that must be specified explicitly
 in an import specification.  It specifies the name of the module
 from which entities will be imported.  All remaining fields take on
 a default value, if not specified explicitly.
@@ -107,23 +121,23 @@ a default value, if not specified explicitly.
 There are two flavors of import declarations:
 the ones specifying what names are to be imported, and the ones specifying
 what names are _not_ to be imported (sometimes called ``hiding'' imports).
-The boolean field #impHiding# distinguishes between those two.
+The boolean field #imsHiding# distinguishes between those two.
 
-The field #impList# contains the actual specification, which has
+The field #imsList# contains the actual specification, which has
 structure similar to the export list of a module.  There are two
 differences: there are no ``module'' imports, and
 all names in the list must be simple.  To capture this similarity we
 reuse the #EntSpec# data type.  If this field is omitted the specification is
-assumed to be #[]#, and the #impHiding# field is set to #True#.
+assumed to be #[]#, and the #imsHiding# field is set to #True#.
 This has the effect of importing all exported entities of the source module.
 
 Sometimes it is more convenient to qualify names imported from a
 module not using the module name, but some other alias instead.  This is
 particularly useful if the name of the source module is quite long and
 a programmer needs to refer often to imported entities by their
-qualified names.  The field #impAs# stores this alias.  If the alias
+qualified names.  The field #imsAs# stores this alias.  If the alias
 is omitted, this field is assumed to have the same value as the
- #impFrom# fields (i.e. we use the module name in qualified names).
+ #imsFrom# fields (i.e. we use the module name in qualified names).
 
 Finally in some situations it might be preferable to only import
 entities with their qualified names.  This can be done with the so
@@ -132,14 +146,15 @@ qualified from normal imports.
 
 \begin{ex}
 The import:
-| import Prelude as P hiding (and,Bool(True))
+| import Prelude as P hiding (module Containers ,and,Bool(True))
 is represented by the data structure:
 | Import {impQualified = False,
-|         impSource    = "Prelude",
-|         impAs        = "P",
-|         impHiding    = True,
-|         impList      = [Ent "and" Nothing,
-|                         Ent "Bool" (Just (Subs ["True"]))]
+|         impSet       = ImportSet {imsSource    = "Prelude",
+|                                   imsAs        = "P",
+|                                   imsHiding    = True,
+|                                   imsList      = [Ent "and" Nothing,
+|                                                   Ent "Bool" (Just (Subs ["True"]))]
+|                                  }
 |        }
 \end{ex}
 

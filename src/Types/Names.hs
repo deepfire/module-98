@@ -1,7 +1,7 @@
 module Types.Names
   (Name(..), QName, ModName(..)
-  , getQualifier, getQualified
-  , mkUnqual, mkQual
+  , getQualifier, getQualified, isQualified
+  , mkUnqual, mkQual, toUnqual
   ) where
 
 
@@ -21,6 +21,13 @@ getQualified (Unqual n) = n
 mkUnqual  = Unqual
 mkQual    = Qual
 
+toUnqual :: QName -> QName
+toUnqual (Qual _ n) = Unqual n
+toUnqual (Unqual n) = Unqual n
+
+isQualified :: QName -> Bool
+isQualified Qual{}   = True
+isQualified Unqual{} = False
 
 instance Show Name where
   show (Name x) = x

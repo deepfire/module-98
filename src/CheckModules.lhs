@@ -32,8 +32,8 @@ invalid solutions, but also to say _why_ they are invalid.   The data type
 >   | UndefinedSubExport QName Name
 >   | AmbiguousExport Name [Entity]
 >   | MissingModule ModName
->   | UndefinedImport ModName Name
->   | UndefinedSubImport ModName Name Name
+>   | UndefinedImport ModName QName
+>   | UndefinedSubImport ModName QName Name
 >   deriving Show
 
 The meanings of the individual errors are as follows:
@@ -88,6 +88,7 @@ checks, since they might produce bogus error messages.
 >     ++ if null missingModules
 >        then chkExpSpec inscp mod
 >              ++ [err | (imp,Just exps) <- impSources,
+>                        -- XXX: is this tight enough?  What about Nothing's?
 >                        err <- chkImport exps imp]
 >        else map MissingModule missingModules
 >   where
@@ -96,10 +97,10 @@ checks, since they might produce bogus error messages.
 >
 >   missingModules :: [ModName]
 >   missingModules =
->     nub [impSource imp|(imp,Nothing)<-impSources]
+>     nub [imsSource (impSet imp)|(imp,Nothing)<-impSources]
 >   impSources :: [(Import, Maybe Exports)]
 >   impSources =
->     [(imp,expsOf (impSource imp))|imp<-modImports mod]
+>     [(imp,expsOf (imsSource (impSet imp)))|imp<-modImports mod]
 
 
 The parameter #expsOf# is a function, which maps module names to their
@@ -120,11 +121,15 @@ which one is meant.
 
 > chkAmbigExps :: Exports -> [ModSysErr]
 > chkAmbigExps (Exports exps) = concatMap isAmbig
->                              (setToList (dom exps))
+>                              (setToList $ dom unqualified)
+>   -- TODO: extend to cover qualified ambiguity.
 >   where
+>   unqualified :: Rel Name Entity
+>   unqualified = mapDom toSimple $ restrictDom (not . isQualified) exps
+>
 >   isAmbig :: Name -> [ModSysErr]
 >   isAmbig n =
->     let (cons,other) = partition isCon (applyRel exps n)
+>     let (cons,other) = partition isCon (applyRel unqualified n)
 >     in ambig n cons ++ ambig n other
 >
 >   ambig :: Name -> [Entity] -> [ModSysErr]
@@ -212,7 +217,7 @@ they refer to are defined by using the generic #chkEntSpec#.
 >       Just exps -> concatMap chk exps
 >   where
 >   aliases :: [ModName]
->   aliases = modName mod : impAs `map` modImports mod
+>   aliases = modName mod : (imsAs . impSet) `map` modImports mod
 >
 >   chk :: ExpListEntry -> [ModSysErr]
 >   chk (ModuleExp x)
@@ -228,16 +233,21 @@ and we have already done all the hard work in #chkEntSpec#.  The function
  #chkImport# just uses #chkEntSpec# to ensure the correctness of the entries
 in the specification list of the import.
 
+XXX: chkEntSpec might not be good enough anymore.
+
 > chkImport :: Exports -> Import -> [ModSysErr]
-> chkImport exps imp = concatMap chk (impList imp)
+> chkImport exps imp =
+>   haskell98Errors <> structuredImportsErrors
 >   where
+>   haskell98Errors = concatMap chk (imsList $ impSet imp)
+>   structuredImportsErrors = []
 >   src     :: ModName
->   src      = impSource imp
+>   src      = imsSource (impSet imp)
 >   chk     :: EntSpec Name -> [ModSysErr]
 >   chk spec =
->     chkEntSpec (impHiding imp)
->       (UndefinedImport src) (UndefinedSubImport src)
->       spec (unExports exps)
+>     chkEntSpec (imsHiding $ impSet imp)
+>       (UndefinedImport src . mkUnqual) (UndefinedSubImport src . mkUnqual)
+>       spec (mapDom toSimple $ unExports exps)
 
 
 
