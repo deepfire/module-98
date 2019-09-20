@@ -17,7 +17,7 @@ ex1 = [
   { modName     = ModName "A"
   , modExpList  = Nothing
   , modImports  = []
-  , modDefines  = mkSet [(Name "f", entF "A") ]
+  , modDefines  = Defns $ mkSet [(Name "f", entF "A") ]
   },
 
   Module
@@ -32,7 +32,7 @@ ex1 = [
       , impList       = []
       }
     ]
-  , modDefines  = emptySet
+  , modDefines  = mempty
   },
 
   Module
@@ -47,7 +47,7 @@ ex1 = [
       , impList       = []
       }
     ]
-  , modDefines  = emptySet
+  , modDefines  = mempty
   },
 
   Module
@@ -69,7 +69,7 @@ ex1 = [
       , impList       = []
       }
     ]
-  , modDefines  = emptySet
+  , modDefines  = mempty
   }
   ]
 
@@ -87,7 +87,7 @@ ex2 = [
       , impList       = []
       }
     ]
-  , modDefines  = emptySet
+  , modDefines  = mempty
   },
 
   Module
@@ -102,7 +102,7 @@ ex2 = [
       , impList       = []
       }
     ]
-  , modDefines  = mkSet [(Name "f", entF "B") ]
+  , modDefines  = Defns $ mkSet [(Name "f", entF "B") ]
   }
   ]
 
@@ -129,14 +129,14 @@ ex3 = [
       }
 
     ]
-  , modDefines  = mkSet [(Name "f", entF "A") ]
+  , modDefines  = Defns $ mkSet [(Name "f", entF "A") ]
   },
 
   Module
   { modName     = ModName "B"
   , modExpList  = Nothing
   , modImports  = []
-  , modDefines  = mkSet [(Name "f", entF "B") ]
+  , modDefines  = Defns $ mkSet [(Name "f", entF "B") ]
   }
   ]
 
@@ -150,7 +150,7 @@ test mods = either (zipWithM_ printErr mods)
     | null es = return ()
     | otherwise = putStrLn ("Error(s) in module " ++ show (modName m) ++ ": "
                   ++ show es) >> exitFailure
-  printRels m (ins,outs) =
+  printRels m (Scope ins,Exports outs) =
     do putStrLn ("in scope of module " ++ show (modName m) ++ ":")
        printRel ins
        putStrLn ("exports of module " ++ show (modName m) ++ ":")

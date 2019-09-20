@@ -16,7 +16,26 @@ We use the following data structure to represent modules:
 >   modName     :: ModName,
 >   modExpList  :: Maybe [ExpListEntry],
 >   modImports  :: [Import],
->   modDefines  :: Rel Name Entity }
+>   modDefines  :: Defns }
+
+
+> newtype Exports  = Exports { unExports :: Rel Name Entity }
+
+Set of bindings in scope.
+
+> newtype Scope    = Scope   { unScope   :: Rel QName Entity } deriving (Eq, Ord)
+>
+> newtype Defns    = Defns   { unDefns   :: Rel Name Entity }
+>
+> instance Semigroup Exports where (Exports l) <> (Exports r) = Exports (l <> r)
+> instance Monoid    Exports where mempty = Exports mempty
+>
+>
+> instance Semigroup Scope   where (Scope   l) <> (Scope   r) = Scope   (l <> r)
+> instance Monoid    Scope   where mempty = Scope   mempty
+>
+> instance Semigroup Defns   where (Defns   l) <> (Defns   r) = Defns   (l <> r)
+> instance Monoid    Defns   where mempty = Defns   mempty
 
 The concrete syntax of Haskell allows an abbreviated form, where
 the module name and the export specification are omitted.

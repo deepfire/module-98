@@ -220,13 +220,13 @@ Now that we know how to handle a single entry in the export list,
 we are ready to compute the export relation of a module.   This
 is the task of the function #exports#.
 
-> exports :: Module -> Rel QName Entity -> Rel Name Entity
+> exports :: Module -> Scope -> Exports
 > exports mod inscp =
 >   case modExpList mod of
->     Nothing -> modDefines mod
->     Just es -> getQualified `mapDom` unionRels exps
+>     Nothing -> Exports . unDefns $ modDefines mod
+>     Just es -> Exports $ getQualified `mapDom` unionRels (unScope <$> exps)
 >       where
->       exps :: [Rel QName Entity]
+>       exps :: [Scope]
 >       exps = mExpListEntry inscp `map` es
 
 The parameter #inscp# models the in-scope relation of the module.
@@ -252,11 +252,10 @@ of #inscp# containing precisely those entities,
 which may be named with _both_ some simple name #x# _and_
 a qualified name #M.x#
 
-> mExpListEntry ::
->   Rel QName Entity -> ExpListEntry -> Rel QName Entity
-> mExpListEntry inscp (EntExp it) = mEntSpec False inscp it
-> mExpListEntry inscp (ModuleExp m) =
->   (qual m `mapDom` unqs) `intersectRel` qs
+> mExpListEntry :: Scope -> ExpListEntry -> Scope
+> mExpListEntry (Scope inscp) (EntExp it) = Scope $ mEntSpec False inscp it
+> mExpListEntry (Scope inscp) (ModuleExp m) =
+>   Scope $ (qual m `mapDom` unqs) `intersectRel` qs
 >   where
 >    qu :: (Rel QName Entity, Rel QName Entity)
 >    qu@(qs, unqs) = partitionDom isQual inscp
@@ -268,20 +267,19 @@ In-scope relations
 In this section we specify how to compute the in-scope relation of a module.
 This is done by the function #inscope#:
 
-> inscope :: Module -> (ModName -> Rel Name Entity)
->                         -> Rel QName Entity
-> inscope m expsOf = unionRels [imports, locals]
+> inscope :: Module -> (ModName -> Exports) -> Scope
+> inscope m expsOf = imports <> locals
 >   where
->   defEnts :: Rel Name Entity
+>   defEnts :: Defns
 >   defEnts = modDefines m
->   locals  :: Rel QName Entity
->   locals  = unionRels
->               [mkUnqual `mapDom` defEnts,
->                mkQual (modName m) `mapDom` defEnts]
+>   locals  :: Scope
+>   locals  = Scope $ unionRels
+>               [mkUnqual `mapDom` unDefns defEnts,
+>                mkQual (modName m) `mapDom` unDefns defEnts]
 >
->   imports :: Rel QName Entity
+>   imports :: Scope
 >   imports =
->     unionRels $ map (mImp expsOf) (modImports m)
+>     Scope . unionRels $ map (unScope . mImp expsOf) (modImports m)
 
 An entity is in scope if it is either locally defined,
 or if it is imported from another module. It is therefore necessary to
@@ -311,28 +309,27 @@ The function #mImp# is used to compute what entities come in scope through
 a single import declaration.
 \newpage
 
-> mImp :: (ModName -> Rel Name Entity) -> Import ->
->          Rel QName Entity
+> mImp :: (ModName -> Exports) -> Import -> Scope
 > mImp expsOf imp
 >   | impQualified imp  = qs
->   | otherwise         = unionRels [unqs, qs]
+>   | otherwise         = qs <> unqs
 >   where
->   qs     :: Set (QName, Entity)
->   qs      = mkQual (impAs imp) `mapDom` incoming
->   unqs   :: Set (QName, Entity)
->   unqs    = mkUnqual `mapDom` incoming
+>   qs     :: Scope
+>   qs      = Scope $ mkQual (impAs imp) `mapDom` incoming
+>   unqs   :: Scope
+>   unqs    = Scope $ mkUnqual `mapDom` incoming
 >
 >   listed :: Set (Name, Entity)
 >   listed  = unionRels $
->               map (mEntSpec isHiding exps)
+>               map (mEntSpec isHiding $ unExports exps)
 >                   (impList imp)
 >   incoming :: Set (Name, Entity)
 >   incoming
->     | isHiding  = exps `minusRel` listed
+>     | isHiding  = unExports exps `minusRel` listed
 >     | otherwise = listed
 >
 >   isHiding  = impHiding imp
->   exps     :: Rel Name Entity
+>   exps     :: Exports
 >   exps      = expsOf (impSource imp)
 
 First we define the relation #listed#, which contains exported entities
@@ -379,30 +376,30 @@ strongly connected components.
 \newpage
 
 > computeInsOuts ::
->   (ModName -> Rel Name Entity) -> [Module] ->
->    [(Rel QName Entity, Rel Name Entity)]
+>   (ModName -> Exports) -> [Module] -> [(Scope, Exports)]
 > computeInsOuts otherExps mods = inscps `zip` exps
 >   where
->   inscps :: [Rel QName Entity]
+>   inscps :: [Scope]
 >   inscps = computeIs exps
->   exps   :: [Rel Name Entity]
->   exps   = lfpAfter nextExps $
+>   exps   :: [Exports]
+>   exps   = map Exports $ lfpAfter (map unExports . nextExps . map Exports) $
 >             replicate (length mods) emptyRel
 >
->   nextExps :: [Rel Name Entity] -> [Rel Name Entity]
+>   nextExps :: [Exports] -> [Exports]
 >   nextExps = computeEs . computeIs
 >
->   computeEs :: [Rel QName Entity] -> [Rel Name Entity]
+>   computeEs :: [Scope] -> [Exports]
 >   computeEs is = zipWith exports mods is
->   computeIs :: [Rel Name Entity] -> [Rel QName Entity]
+>   computeIs :: [Exports] -> [Scope]
 >   computeIs es = map (`inscope` toFun es) mods
 >
->   toFun :: [Rel Name Entity] -> ModName -> Rel Name Entity
+>   toFun :: [Exports] -> (ModName -> Exports)
 >   toFun es m   = maybe (otherExps m) (es !!)
 >                        (lookup m mod_ixs)
 >   mod_ixs :: [(ModName, Int)]
 >   mod_ixs      = map modName mods `zip` [0..]
 >
+> lfpAfter :: Eq a => (a -> a) -> (a -> a)
 > lfpAfter f x = if fx == x then fx else lfpAfter f fx
 >   where
 >   fx = f x

@@ -21,7 +21,7 @@ and export relations.  It can be given by a function of type:
 
 > mProgram ::
 >   [Module] -> Either [[ModSysErr]]
->		       [(Rel QName Entity,Rel Name Entity)]
+>		       [(Scope,Exports)]
 
 Given a list of modules, the function either reports a list of
 errors found in each module, or returns the in-scope and export
@@ -35,18 +35,18 @@ we define the function #mProgram# as follows:
 >   | not (all null errs) = Left errs
 >   | otherwise       = Right rels
 >   where
->   rels :: [(Rel QName Entity, Rel Name Entity)]
->   rels = computeInsOuts (const emptyRel) modules
+>   rels :: [(Scope, Exports)]
+>   rels = computeInsOuts (const mempty) modules
 >
 >   errs :: [[ModSysErr]]
 >   errs = zipWith (chkModule expsOf) inscps modules
 >
->   ie :: ([Rel QName Entity], [Rel Name Entity])
+>   ie :: ([Scope], [Exports])
 >   ie@(inscps,exps) = unzip rels
 >
->   expsOf       :: ModName -> Maybe (Rel Name Entity)
+>   expsOf       :: ModName -> Maybe Exports
 >   expsOf m      = lookup m mod_exps
->   mod_exps     :: [(ModName, Rel Name Entity)]
+>   mod_exps     :: [(ModName, Exports)]
 >   mod_exps      = map modName modules `zip` exps
 
 

@@ -78,8 +78,8 @@ If some referenced modules are missing, we report that, but skip the remaining
 checks, since they might produce bogus error messages.
 
 > chkModule ::
->   (ModName -> Maybe (Rel Name Entity)) ->
->   Rel QName Entity ->
+>   (ModName -> Maybe Exports) ->
+>   Scope ->
 >   Module ->
 >     [ModSysErr]
 >
@@ -91,13 +91,13 @@ checks, since they might produce bogus error messages.
 >                        err <- chkImport exps imp]
 >        else map MissingModule missingModules
 >   where
->   mod_exports :: Rel Name Entity
+>   mod_exports :: Exports
 >   Just mod_exports = expsOf (modName mod)
 >
 >   missingModules :: [ModName]
 >   missingModules =
 >     nub [impSource imp|(imp,Nothing)<-impSources]
->   impSources :: [(Import, Maybe (Rel Name Entity))]
+>   impSources :: [(Import, Maybe Exports)]
 >   impSources =
 >     [(imp,expsOf (impSource imp))|imp<-modImports mod]
 
@@ -118,8 +118,8 @@ a type constructor and a value constructor.  As we previously discussed,
 this is not considered to be an ambiguity as we may determine from the context
 which one is meant.
 
-> chkAmbigExps :: Rel Name Entity -> [ModSysErr]
-> chkAmbigExps exps = concatMap isAmbig
+> chkAmbigExps :: Exports -> [ModSysErr]
+> chkAmbigExps (Exports exps) = concatMap isAmbig
 >                              (setToList (dom exps))
 >   where
 >   isAmbig :: Name -> [ModSysErr]
@@ -205,7 +205,7 @@ the name of the current module.
 For other entries we need to check that the entities
 they refer to are defined by using the generic #chkEntSpec#.
 
-> chkExpSpec :: Rel QName Entity -> Module -> [ModSysErr]
+> chkExpSpec :: Scope -> Module -> [ModSysErr]
 > chkExpSpec inscp mod =
 >     case modExpList mod of
 >       Nothing   -> []
@@ -220,7 +220,7 @@ they refer to are defined by using the generic #chkEntSpec#.
 >     | otherwise        = [UndefinedModuleAlias x]
 >   chk (EntExp spec) = chkEntSpec False
 >                UndefinedExport UndefinedSubExport
->                spec inscp
+>                spec (unScope inscp)
 
 The remaining check we have is the validity of import declarations.
 The process is quite similar to the checks of the export specification
@@ -228,7 +228,7 @@ and we have already done all the hard work in #chkEntSpec#.  The function
  #chkImport# just uses #chkEntSpec# to ensure the correctness of the entries
 in the specification list of the import.
 
-> chkImport :: Rel Name Entity -> Import -> [ModSysErr]
+> chkImport :: Exports -> Import -> [ModSysErr]
 > chkImport exps imp = concatMap chk (impList imp)
 >   where
 >   src     :: ModName
@@ -237,7 +237,7 @@ in the specification list of the import.
 >   chk spec =
 >     chkEntSpec (impHiding imp)
 >       (UndefinedImport src) (UndefinedSubImport src)
->       spec exps
+>       spec (unExports exps)
 
 
 
