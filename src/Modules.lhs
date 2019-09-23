@@ -370,47 +370,47 @@ For every qualified name, we record which alias brought it in.
 >   (Scope -> selectedQuals, Scope -> selectedUnqs)
 >     = partitionDom isQualified (unScope selected)
 >
+>   importable :: Exports
+>   importable = expsOf . imsSource $ impSet imp
+>
 >   selected :: Scope
 >   selected
 >     | isHiding  = Scope $ unExports importable `minusRel` resolved
 >     | otherwise = Scope resolved
+>    where
+>      resolved :: Rel QName Entity
+>      resolved =
+>        mapDom mkUnqual resolved98
+>        <> resolvedStructured
+>       where
+>         resolved98 :: Rel Name Entity
+>         resolved98 = unionRels $
+>           map (mEntSpec isHiding $ mapDom toSimple importableUnQuals)
+>               listed98
 >
->   resolved :: Rel QName Entity
->   resolved =
->     mapDom mkUnqual resolved98
->       <> resolvedStructured
+>         resolvedStructured :: Rel QName Entity
+>         resolvedStructured = unionRels $
+>           map (mEntSpec isHiding importableQuals) $
+>               concatMap structuredImportSetSpecs listedStructured
+>          where
+>            structuredImportSetSpecs :: ImportSet -> [EntSpec QName]
+>            structuredImportSetSpecs ims =
+>              qualifyEntSpec (imsSource ims) <$> imsList ims
+>             where
+>               qualifyEntSpec :: ModName -> EntSpec Name -> EntSpec QName
+>               qualifyEntSpec m (Ent n x) = Ent (mkQual m n) x
 >
->   resolved98 :: Rel Name Entity
->   resolved98 = unionRels $
->     map (mEntSpec isHiding $ mapDom toSimple importableUnQuals)
->         listed98
+>         importableQuals, importableUnQuals :: Rel QName Entity
+>         (,) importableQuals
+>             importableUnQuals =
+>           partitionDom isQualified (unExports importable)
 >
->   resolvedStructured :: Rel QName Entity
->   resolvedStructured = unionRels $
->     map (mEntSpec isHiding importableQuals) $
->         concatMap structuredImportSetSpecs listedStructured
->
->   structuredImportSetSpecs :: ImportSet -> [EntSpec QName]
->   structuredImportSetSpecs ims =
->     qualifyEntSpec (imsSource ims) <$> imsList ims
->
->   qualifyEntSpec :: ModName -> EntSpec Name -> EntSpec QName
->   qualifyEntSpec m (Ent n x) = Ent (mkQual m n) x
->
->   (listed98, listedStructured) :: ([EntSpec Name], [ImportSet])
->     = foldl (\(essAcc, imssAcc) -> \case
->                e@Ent{}  -> (e:essAcc, imssAcc)
->                Qual ims -> (essAcc, ims:imssAcc))
->             ([],[])
->             (imsList $ impSet imp)
->
->   importableQuals, importableUnQuals :: Rel QName Entity
->   (,) importableQuals
->       importableUnQuals =
->     partitionDom isQualified (unExports importable)
->
->   importable :: Exports
->   importable = expsOf . imsSource $ impSet imp
+>         (listed98, listedStructured) :: ([EntSpec Name], [ImportSet])
+>           = foldl (\(essAcc, imssAcc) -> \case
+>                       e@Ent{}  -> (e:essAcc, imssAcc)
+>                       Qual ims -> (essAcc, ims:imssAcc))
+>                   ([],[])
+>                   (imsList $ impSet imp)
 
 First we define the relation #listed#, which contains exported entities
 matching _any_ of the entity specifications in the list of the import
